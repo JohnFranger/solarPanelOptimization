@@ -78,7 +78,7 @@ DHT HT(sensePin, Type);
 int stepsPerRevolution = 2048;
 Stepper myStepper(stepsPerRevolution,5,19,18,21); 
 //rpm
-int motSpeed = 5;
+int motSpeed = 10;
 
 // We only sweep half a turn (180 degrees) so the photoresistor wires can never wrap around.
 // Step 0 is wherever the motor is when it powers on, so start it at one end of the arc.
