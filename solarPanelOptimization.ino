@@ -347,44 +347,6 @@ void loop() {
     }
   }
 
-  /*
-  // Non-blocking sweep: only ONE step per pass of loop(), reading the light at every step.
-  // (myStepper.step(1) waits at most ~3 ms, instead of step(2048) locking up everything for 6 s)
-  if(!cycle1Complete){
-    if(!atHome){
-      // First walk back to step 0 (no reading) so every sweep starts from the same end of the arc
-      if(stepPos > 0){
-        myStepper.step(-1);
-        stepPos--;
-      } else {
-        atHome = true;
-      }
-    } else {
-      // Remember which STEP had the most light (not a time), so no time-to-angle conversion is needed
-      if(maxLightVal <= curLightVal){
-        maxLightVal = curLightVal;
-        bestStep = stepPos;
-      }
-
-      if(stepPos < sweepSteps){
-        myStepper.step(1);
-        stepPos++;
-      } else {
-        cycle1Complete = true;
-      }
-    }
-  }
-
-  // finished the sweep, walks backwards one step per pass back to the brightest step
-  if(cycle1Complete && !reverseComplete){
-    if(stepPos > bestStep){
-      myStepper.step(-1);
-      stepPos--;
-    } else {
-      reverseComplete = true;
-    }
-  }
-  */
 
   //Updating each pass to see if the button was pressed
   but1Old = but1New;

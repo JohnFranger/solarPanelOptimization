@@ -28,5 +28,9 @@ It also looks at an API and DHT11 for local weather conditions.
 - This means we resorted heavily to boolean logic, flags, and states. 
 
 - We utilized various timers along with the math to find out how long a given operation must take
-- Given that we were running at 10 rpm we had a period of 6 seconds. 
+- This along with state tracking ensured things only ran once and only when they were supposed to.
+
+- The API call is to get local conditions, however due to the length of the weather condition string,
+  we chose to not implement it on the LCD. However, the data is parseable from the json file. 
+
 
