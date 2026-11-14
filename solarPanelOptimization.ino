@@ -76,15 +76,16 @@ DHT HT(sensePin, Type);
 //// Stepper ////
 
 int stepsPerRevolution = 2048;
-Stepper myStepper(stepsPerRevolution,5,18,19,21); 
+Stepper myStepper(stepsPerRevolution,5,19,18,21); 
 //rpm
-int motSpeed = 10;
+int motSpeed = 5;
 
 // We only sweep half a turn (180 degrees) so the photoresistor wires can never wrap around.
 // Step 0 is wherever the motor is when it powers on, so start it at one end of the arc.
 const int sweepSteps = stepsPerRevolution / 2;
 int stepPos = 0;     // where the motor is right now, in steps (0 to sweepSteps)
 int bestStep = 0;    // the step where we saw the most light
+bool completed = true;
 
 //// API STUFF ////
 
@@ -258,86 +259,93 @@ void loop() {
   }
 
   // We pressed the button to start the search and the previous search is complete
-  if(but2Pressed && curCycle == 6){
+  if(but2Pressed && completed){
     maxLightVal = 0;
     bestStep = 0;
     curCycle = 0;
     stepPos = 0;
+    completed = false;
   }
 
   // Must go forward then backwards to avoid tangling wires
   // This could definitely be optimized and generalized to avoid copy pasting
-  // Cycle 6 means we reached the max point, allowing the button to be pressed again.
+  // Completed means we reached the max point, allowing the button to be pressed again.
 
-  // First 180 degrees forwards
-  if(curCycle == 0){
-    if(stepPos == sweepSteps){
-      curCycle = 1;
-    } else{
-    myStepper.step(1);
-    stepPos++;
+  if(!completed){
+    // First 180 degrees forwards
+    if(curCycle == 0){
+      if(stepPos == sweepSteps){
+        curCycle = 1;
+        Serial.println("Cycle 1");
+      } else{
+      myStepper.step(1);
+      stepPos++;
+      }
+      if(curLightVal > maxLightVal){
+        maxLightVal = curLightVal;
+        bestStep = stepPos;
+      }
     }
-    if(curLightVal > maxLightVal){
-      maxLightVal = curLightVal;
-      bestStep = stepPos;
+
+    // Back to zero
+    if(curCycle == 1){
+      if(stepPos == 0){
+        curCycle = 2;
+        Serial.println("Cycle 2");
+      } else{
+      myStepper.step(-1);
+      stepPos--;
+      }
+      if(curLightVal > maxLightVal){
+        maxLightVal = curLightVal;
+        bestStep = stepPos;
+      }
+    }
+
+    // 180 degrees backwards
+    if(curCycle == 2){
+      if(stepPos == -sweepSteps){
+        curCycle = 3;
+        Serial.println("Cycle 3");
+      } else{
+      myStepper.step(-1);
+      stepPos--;
+      }
+      if(curLightVal > maxLightVal){
+        maxLightVal = curLightVal;
+        bestStep = stepPos;
+      }
+    }
+
+    // Back to Zero
+    if(curCycle == 3){
+      if(stepPos == 0){
+        curCycle = 4;
+        Serial.println("Cycle 4");
+      } else{
+      myStepper.step(1);
+      stepPos++;
+      }
+      if(curLightVal > maxLightVal){
+        maxLightVal = curLightVal;
+        bestStep = stepPos;
+      }
+    }
+
+    // To highest measured value
+    if(curCycle == 4){
+      if(stepPos == bestStep){
+        completed = true;
+        Serial.println("Completed");
+      } else if(stepPos > bestStep){
+      myStepper.step(-1);
+      stepPos--;
+      } else{
+      myStepper.step(1);
+      stepPos++;
+      }
     }
   }
-
-  // Back to zero
-  if(curCycle == 1){
-    if(stepPos == 0){
-      curCycle = 2;
-    } else{
-    myStepper.step(-1);
-    stepPos--;
-    }
-    if(curLightVal > maxLightVal){
-      maxLightVal = curLightVal;
-      bestStep = stepPos;
-    }
-  }
-
-  // 180 degrees backwards
-  if(curCycle == 2){
-    if(stepPos == -sweepSteps){
-      curCycle = 3;
-    } else{
-    myStepper.step(-1);
-    stepPos--;
-    }
-    if(curLightVal > maxLightVal){
-      maxLightVal = curLightVal;
-      bestStep = stepPos;
-    }
-  }
-
-  // Back to Zero
-  if(curCycle == 3){
-    if(stepPos == 0){
-      curCycle = 4;
-    } else{
-    myStepper.step(1);
-    stepPos++;
-    }
-    if(curLightVal > maxLightVal){
-      maxLightVal = curLightVal;
-      bestStep = stepPos;
-    }
-  }
-
-  // To highest measured value
-  if(curCycle == 5){
-    if(stepPos == bestStep){
-      curCycle = 6;
-    } else if(curStep > bestStep){
-    myStepper.step(-1);
-    stepPos--;
-    } else{
-    myStepper.step(1);
-    stepPos--;
-    }
-  }
-  
 
   /*
   // Non-blocking sweep: only ONE step per pass of loop(), reading the light at every step.
