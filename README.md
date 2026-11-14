@@ -15,7 +15,7 @@ It also looks at an API and DHT11 for local weather conditions.
 2. LCD Display
 3. 1kΩ Potentiometer 
 4. DHT 11 Temperature and Humidity Sensor
-5. External Power Supply Module + 9V Battery 
+5. External Power Supply Module + 9V Battery // Arduino Nano + Powerbank
 6. Stepper Motor & Driver
 7. 220Ω Resistor
 8. Jumper Wires 
