@@ -22,12 +22,13 @@ solarPanelOptimization's tasks are as follows:
 
 int lastTime = 0;
 int coolDown = 4000;
-bool cycle1Complete = true;
+int apiCoolDown = 60000;   // weather doesn't change every few seconds
+int curCycle = 0;
 bool reverseComplete = false;
 
 // Buttons || But1 is LCD || But2 is Light Sensor 
-const uint8_t but1Pin = 16;
-const uint8_t but2Pin = 18; 
+const uint8_t but1Pin = 33;
+const uint8_t but2Pin = 32; 
 
 bool butPressed = false;
 
@@ -43,8 +44,6 @@ bool but2Pressed = false;
 
 // ESP32 ADC notes:
 // - analogRead only works while WiFi is on if the pin is on ADC1 (GPIO 32, 33, 34, 35, 36, 39).
-//   ADC2 pins stop working as soon as WiFi starts, so we avoid them.
-// - GPIO34 is input only, which is fine for a sensor (just can't be used for buttons/outputs).
 // - The ESP32 ADC is 12 bit, so readings go from 0 to 4095 (an Uno was 0 to 1023).
 constexpr uint8_t lightPin = 34;
 uint16_t curLightVal;
@@ -53,12 +52,12 @@ uint16_t maxLightVal = 0;
 
 //// LCD Screen ////
 
-constexpr uint8_t rs = 7;
-constexpr uint8_t en = 6;
-constexpr uint8_t d4 = 5;
-constexpr uint8_t d5 = 4;
-constexpr uint8_t d6 = 3;
-constexpr uint8_t d7 = 2;
+constexpr uint8_t rs = 25;
+constexpr uint8_t en = 26;
+constexpr uint8_t d4 = 27;
+constexpr uint8_t d5 = 14;
+constexpr uint8_t d6 = 13;
+constexpr uint8_t d7 = 4;
 
 LiquidCrystal lcd(rs,en,d4,d5,d6,d7);
 
@@ -66,7 +65,7 @@ LiquidCrystal lcd(rs,en,d4,d5,d6,d7);
 
 // False means from API, true means from sensor
 
-int sensePin = 2;
+int sensePin = 23;
 
 bool THSensor = false;
 
@@ -77,7 +76,7 @@ DHT HT(sensePin, Type);
 //// Stepper ////
 
 int stepsPerRevolution = 2048;
-Stepper myStepper(stepsPerRevolution,8,10,9,11); 
+Stepper myStepper(stepsPerRevolution,5,18,19,21); 
 //rpm
 int motSpeed = 10;
 
@@ -86,19 +85,19 @@ int motSpeed = 10;
 const int sweepSteps = stepsPerRevolution / 2;
 int stepPos = 0;     // where the motor is right now, in steps (0 to sweepSteps)
 int bestStep = 0;    // the step where we saw the most light
-bool atHome = true;  // false while walking back to step 0 at the start of a new scan
 
 //// API STUFF ////
 
 // Wifi network and password, I used my hotspot. Pointers
 // Requires A Private Network
-const char* ssid = "-----";
-const char* password = "-----";
+const char* ssid = "esp32";
+const char* password = "12345678";
 
 // OpenWeatherMap API details
 const String city = "Edmonton";
 const String countryCode = "ca";
 const String apiKey = "dabdb633cde2f5e3cbef02448c369e18";
+
 
 // Endpoint URL: Specific URL where the application sends requests to retrieve data from
 String serverPath = "http://api.openweathermap.org/data/2.5/weather?q=" + city + "," + countryCode + "&appid=" + apiKey + "&units=metric";
@@ -154,6 +153,7 @@ void loop() {
   if(but1New != but1Old && but1New == 0){
     but1Pressed = true;
     THSensor = !THSensor;
+    Serial.println("Button 1 Pressed");
   } else{
     but1Pressed = false;
   }
@@ -161,12 +161,13 @@ void loop() {
   // Only on falling button edge (button being pressed down)
   if(but2New != but2Old && but2New == 0){
     but2Pressed = true;
+    Serial.println("Button 2 Pressed");
   } else{
     but2Pressed = false;
   }
 
   // Runs if a certain amount of time has passed, its the first pass, or we press the button
-  if(millis() - lastTime >= coolDown || lastTime == 0 || but1Pressed){
+  if(millis() - lastTime >= (THSensor ? coolDown : apiCoolDown) || lastTime == 0 || but1Pressed){
     // Our Measured Values
     if(THSensor){
     
@@ -192,6 +193,9 @@ void loop() {
 
       // Begin HTTP request
       http.begin(serverPath.c_str());
+
+      http.setTimeout(2000);
+      http.setConnectTimeout(2000);
 
       // Send HTTP GET request
       // 200: is a success, 401: invalid key, 404: for bad city name
@@ -223,6 +227,14 @@ void loop() {
           Serial.print(" C || ");
           Serial.print(apiHumidity);
           Serial.println(" %");
+
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print(temp, 1);
+          lcd.write((uint8_t)223); // degree symbol from the LCD's own character ROM (a "°" in a string prints junk)
+          lcd.print("C || ");
+          lcd.print(apiHumidity, 0);
+          lcd.print("%");
         }
 
       } 
@@ -246,14 +258,88 @@ void loop() {
   }
 
   // We pressed the button to start the search and the previous search is complete
-  if(but2Pressed && cycle1Complete && reverseComplete){
+  if(but2Pressed && curCycle == 6){
     maxLightVal = 0;
     bestStep = 0;
-    atHome = false;
-    cycle1Complete = false;
-    reverseComplete = false;
+    curCycle = 0;
+    stepPos = 0;
   }
 
+  // Must go forward then backwards to avoid tangling wires
+  // This could definitely be optimized and generalized to avoid copy pasting
+  // Cycle 6 means we reached the max point, allowing the button to be pressed again.
+
+  // First 180 degrees forwards
+  if(curCycle == 0){
+    if(stepPos == sweepSteps){
+      curCycle = 1;
+    } else{
+    myStepper.step(1);
+    stepPos++;
+    }
+    if(curLightVal > maxLightVal){
+      maxLightVal = curLightVal;
+      bestStep = stepPos;
+    }
+  }
+
+  // Back to zero
+  if(curCycle == 1){
+    if(stepPos == 0){
+      curCycle = 2;
+    } else{
+    myStepper.step(-1);
+    stepPos--;
+    }
+    if(curLightVal > maxLightVal){
+      maxLightVal = curLightVal;
+      bestStep = stepPos;
+    }
+  }
+
+  // 180 degrees backwards
+  if(curCycle == 2){
+    if(stepPos == -sweepSteps){
+      curCycle = 3;
+    } else{
+    myStepper.step(-1);
+    stepPos--;
+    }
+    if(curLightVal > maxLightVal){
+      maxLightVal = curLightVal;
+      bestStep = stepPos;
+    }
+  }
+
+  // Back to Zero
+  if(curCycle == 3){
+    if(stepPos == 0){
+      curCycle = 4;
+    } else{
+    myStepper.step(1);
+    stepPos++;
+    }
+    if(curLightVal > maxLightVal){
+      maxLightVal = curLightVal;
+      bestStep = stepPos;
+    }
+  }
+
+  // To highest measured value
+  if(curCycle == 5){
+    if(stepPos == bestStep){
+      curCycle = 6;
+    } else if(curStep > bestStep){
+    myStepper.step(-1);
+    stepPos--;
+    } else{
+    myStepper.step(1);
+    stepPos--;
+    }
+  }
+  
+
+  /*
   // Non-blocking sweep: only ONE step per pass of loop(), reading the light at every step.
   // (myStepper.step(1) waits at most ~3 ms, instead of step(2048) locking up everything for 6 s)
   if(!cycle1Complete){
@@ -290,6 +376,7 @@ void loop() {
       reverseComplete = true;
     }
   }
+  */
 
   //Updating each pass to see if the button was pressed
   but1Old = but1New;
